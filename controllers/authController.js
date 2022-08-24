@@ -52,11 +52,11 @@ exports.sugnupT = catchAsync(async (req, res, next) => {
   //   await user.save({ validateBeforeSave: false });
 
   // 3) Send it to user's email
-  const resetURL = `${req.protocol}://${req.get(
-    "host"
-  )}/api/v1/users/reverify/${resetToken}`;
+  //   const resetURL = `${req.protocol}://${req.get(
+  //     "host"
+  //   )}/api/v1/users/reverify/${resetToken}`;
 
-  const message = `Forgot your password? Submit a PATCH request with your new password and passwordConfirm to: ${resetURL}.\nIf you didn't forget your password, please ignore this email!`;
+  const message = `OTP  ${resetToken} only valid for 10`;
   const saltRound = 10;
   const hashOTP = await bcrypt.hash(resetToken, saltRound);
   const newotpModel = await new otpModel({
