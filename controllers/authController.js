@@ -120,7 +120,7 @@ exports.reverify = catchAsync(async (req, res, next) => {
               verified: true,
             });
             // User.updateOne({ email: email }, { verified: true });
-            otpModel.deleteMany({ email: req.body.email });
+            await otpModel.deleteMany({ email: { $eq: req.body.email } });
             res.json({
               status: "Verified",
               message: "user email verified successfully",
