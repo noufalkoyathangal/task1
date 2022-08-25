@@ -1,10 +1,13 @@
 const crypto = require("crypto");
 const { promisify } = require("util");
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 const User = require("./../models/userModel");
 const catchAsync = require("./../utils/catchAsync");
 const AppError = require("./../utils/appError");
 const sendEmail = require("./../utils/email");
+const smtp = require("./../utils/smtp");
+const otpModel = require("../models/otpModel");
 
 const signToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -35,6 +38,113 @@ const createSendToken = (user, statusCode, res) => {
     },
   });
 };
+
+exports.sugnupT = catchAsync(async (req, res, next) => {
+  // 1) Get user based on POSTed email
+  //   const user = await User.findOne({ email: req.body.email });
+  //   if (!user) {
+  //     return next(new AppError("There is no user with email address.", 404));
+  //   }
+  const user = { email: req.body.email };
+
+  // 2) Generate the random reset token
+  const resetToken = `${Math.floor(1000 + Math.random() * 9000)}`;
+  //   await user.save({ validateBeforeSave: false });
+
+  // 3) Send it to user's email
+  //   const resetURL = `${req.protocol}://${req.get(
+  //     "host"
+  //   )}/api/v1/users/reverify/${resetToken}`;
+
+  const message = `OTP  ${resetToken} only valid for 10`;
+  const saltRound = 10;
+  const hashOTP = await bcrypt.hash(resetToken, saltRound);
+  const newotpModel = await new otpModel({
+    email: user.email,
+    otp: hashOTP,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 3600000,
+  });
+  await newotpModel.save();
+  try {
+    await smtp({
+      email: user.email,
+      subject: "Your password reset token (valid for 10 min)",
+      message,
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: "Token sent to email!",
+    });
+  } catch (err) {
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    return next(
+      new AppError("There was an error sending the email. Try again later!"),
+      500
+    );
+  }
+});
+exports.reverify = catchAsync(async (req, res, next) => {
+  // 1) Get user based on the token
+  try {
+    const { otp, email } = req.body;
+    if (!otp || !email) {
+      throw Error("Empty otp datails are not allowed");
+    } else {
+      const userOTPVerificationRecord = await otpModel.find({ email });
+      if (userOTPVerificationRecord.length <= 0) {
+        throw new Error(
+          "Account record doesn't exist or has been verified already"
+        );
+      } else {
+        const { expiresAt } = userOTPVerificationRecord[0];
+        const hashedOTP = userOTPVerificationRecord[0].otp;
+
+        if (expiresAt < Date.now()) {
+          await otpModel.deleteMany({ email });
+          throw new Error("code has expired.please request again ");
+        } else {
+          const validOTP = await bcrypt.compare(otp, hashedOTP);
+          if (!validOTP) {
+            throw new Error("Invalid code passed,check your inbox");
+          } else {
+            User.create({
+              name: req.body.name,
+              email: req.body.email,
+              password: req.body.password,
+              passwordConfirm: req.body.passwordConfirm,
+              verified: true,
+            });
+            // User.updateOne({ email: email }, { verified: true });
+            await otpModel.deleteMany({ email: { $eq: req.body.email } });
+            res.json({
+              status: "Verified",
+              message: "user email verified successfully",
+            });
+          }
+        }
+      }
+    }
+  } catch (error) {
+    res.json({
+      status: "Failed",
+      message: error.message,
+    });
+  }
+  // 2) If token has not expired, and there is user, set the new password
+  //   user.name = req.body.name;
+  //   user.email = req.body.email;
+  //   user.password = req.body.password;
+  //   user.passwordConfirm = req.body.passwordConfirm;
+  //   await user.save();
+
+  // 3) Update changedPasswordAt property for the user
+  // 4) Log the user in, send JWT
+});
 
 exports.signup = catchAsync(async (req, res, next) => {
   const newUser = await User.create({

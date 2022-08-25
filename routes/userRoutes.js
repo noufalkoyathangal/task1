@@ -4,7 +4,11 @@ const authController = require("./../controllers/authController");
 
 const router = express.Router();
 
-router.post("/signup", authController.signup);
+// router.post("/signup", authController.signup);
+// For OTP send
+router.post("/signupT", authController.sugnupT);
+// For OTP verify
+router.post("/reverify", authController.reverify);
 router.post("/login", authController.login);
 router.post("/forgotPassword", authController.forgotPassword);
 router.patch("/resetPassword/:token", authController.resetPassword);
